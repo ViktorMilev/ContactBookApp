@@ -1,7 +1,15 @@
 package com.contactbook;
 
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import javafx.application.Application;
 import javafx.collections.FXCollections;
@@ -14,6 +22,7 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.ChoiceDialog;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextInputDialog;
@@ -23,17 +32,21 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 
 
 public class Main extends Application {
+	private final Map<String, Image> imageCache = new HashMap<>();
 	private final ContactManager manager = new ContactManager();
 	private final ObservableList<Contact> displayedContacts = FXCollections.observableArrayList();
 	private ListView<Contact> contactListView;
 	
 	private double xOffset = 0;
 	private double yOffset = 0;
+	
+	private final String contactPhotosURL = System.getProperty("user.dir") + "/resources/com/contactbook/contact_photos";
 	
 	public static void main (String[] args) {
 		launch();
@@ -83,9 +96,56 @@ public class Main extends Application {
 		// Contact list
 		contactListView = new ListView<>(displayedContacts);
 		contactListView.setPlaceholder(new Label("Welcome to Contact Book app!"));
-		((Label) contactListView.getPlaceholder()).getStyleClass().add("contact-list-view-placeholder"); 
+		((Label) contactListView.getPlaceholder()).getStyleClass().add("contact-list-view-placeholder");
+		contactListView.setCellFactory(lv -> new ListCell<>() {
+			@Override
+			protected void updateItem(Contact item, boolean empty) {
+				super.updateItem(item, empty);
+				if (empty || item == null) {
+					setGraphic(null);
+					setText(null);
+				} else {
+					String fileName = "";
+					fileName = "placeholder".replaceAll("\\s+", "_") + ".jpg";
+					
+					if (item.getPhotoFileName() != "" && item.getPhotoFileName() != null) {
+						fileName = item.getPhotoFileName();
+					}
+					
+					File imagePath = new File(contactPhotosURL, fileName);
+					
+					
+					Image image = imageCache.get(fileName);
+					if (image == null) {
+						try {
+							image = new Image(new FileInputStream(imagePath));
+						} catch (Exception e) {
+							image = new Image(getClass().getResourceAsStream("/com/contactbook/contact_photos/placeholder.png"));
+						}
+						
+						if (image != null) {
+							imageCache.put(fileName, image);
+						}
+					}
+					
+					
+					ImageView imageView = new ImageView();
+					if (image != null) {
+						imageView.setImage(image);
+						imageView.setFitWidth(40);
+						imageView.setFitHeight(40);
+						imageView.setPreserveRatio(true);
+					}
+					
+					setText(item.getName() + "\n" + item.getPhoneNumber() + "\n" + item.getEmail());
+					setGraphic(item != null ? imageView : null);
+				}
+			}
+		});
+		
 		VBox contactListWrapper = new VBox(contactListView);
 		contactListWrapper.setPadding(new Insets(10));
+		
 		
 		// Buttons
 		Button addButton = new Button("Add Contact");
@@ -115,7 +175,7 @@ public class Main extends Application {
 		
 		// Button actions
 		addButton.setOnAction(e -> showAddDialog());
-		//editButton.setOnAction();
+		editButton.setOnAction(e -> showEditDialog());
 		searchButton.setOnAction(e -> showSearchDialog());
 		removeButton.setOnAction(e -> showRemoveDialog());
 		showAllButton.setOnAction(e -> showAllContacts());
@@ -143,15 +203,47 @@ public class Main extends Application {
 		TextField emailField = new TextField();
 		emailField.setPromptText("Email");
 		
-		VBox content = new VBox(10, nameField, phoneField, emailField);
+		Button choosePhotoButton = new Button("Choose Photo");
+		Label photoLabel = new Label("No photo selected");
+		final File[] selectedFile = {null};
+		
+		choosePhotoButton.setOnAction(e -> {
+			FileChooser fileChooser = new FileChooser();
+			fileChooser.getExtensionFilters().addAll(
+				new FileChooser.ExtensionFilter("Image Files", "*.png", "*.jpg", "*.jpeg", "*.gif")
+			);
+			File file = fileChooser.showOpenDialog(dialog.getOwner());
+			if (file != null) {
+				selectedFile[0] = file;
+				photoLabel.setText(file.getName());
+			}
+		});
+		
+		VBox content = new VBox(10, nameField, phoneField, emailField, choosePhotoButton, photoLabel);
 		dialog.getDialogPane().setContent(content);
 		dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
 		
 		dialog.setResultConverter(btn -> {
 			if (btn == ButtonType.OK) {
-				return new Contact(nameField.getText(), phoneField.getText(), emailField.getText());
+				String name = nameField.getText();
+				String phone = phoneField.getText();
+				String email = emailField.getText();
+				String photoFileName = null;
+
+				if (selectedFile[0] != null && name != null && !name.isEmpty()) {
+					String ext = selectedFile[0].getName().substring(selectedFile[0].getName().lastIndexOf('.') + 1);
+					String uniqueName = name.replaceAll("\\s+", "_") + "_" + UUID.randomUUID() + "." + ext;
+					File imageDir = new File(contactPhotosURL);
+					if (!imageDir.exists()) imageDir.mkdirs();
+					File dest = new File(imageDir, uniqueName);
+					try {
+						Files.copy(selectedFile[0].toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+						photoFileName = uniqueName;
+					} catch (IOException ignored) {}
+				}
+
+				return new Contact(name, phone, email, photoFileName);
 			}
-			
 			return null;
 		});
 		
@@ -159,6 +251,71 @@ public class Main extends Application {
 			manager.addContact(contact);
 			showAllContacts();
 		});
+	}
+	
+	private void showEditDialog() {
+		Contact selected = contactListView.getSelectionModel().getSelectedItem();
+		if (selected == null) {
+			showAlert("Please select a contact to edit.");
+			return;
+		}
+		
+		Dialog<Contact> dialog = new Dialog<>();
+		dialog.setTitle("Edit Contact");
+		
+		TextField nameField = new TextField(selected.getName());
+		TextField phoneField = new TextField(selected.getPhoneNumber());
+		TextField emailField = new TextField(selected.getEmail());
+		
+		Button choosePhotoButton = new Button("Choose Photo");
+		Label photoLabel = new Label("No photo selected");
+		final File[] selectedFile = {null};
+		
+		choosePhotoButton.setOnAction(e -> {
+			FileChooser fileChooser = new FileChooser();
+			fileChooser.getExtensionFilters().addAll(
+				new FileChooser.ExtensionFilter("Image Files", "*.png", "*.jpg", "*.jpeg", "*.gif")
+			);
+			File file = fileChooser.showOpenDialog(dialog.getOwner());
+			if (file != null) {
+				selectedFile[0] = file;
+				photoLabel.setText(file.getName());
+			}
+		});
+		
+		VBox content = new VBox(10, nameField, phoneField, emailField, choosePhotoButton, photoLabel);
+		dialog.getDialogPane().setContent(content);
+		dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+		
+		dialog.setResultConverter(btn -> {
+			if (btn == ButtonType.OK) {
+				String name = nameField.getText();
+				String phone = phoneField.getText();
+				String email = emailField.getText();
+				String photoFileName = selected.getPhotoFileName();
+
+				if (selectedFile[0] != null && name != null && !name.isEmpty()) {
+					String ext = selectedFile[0].getName().substring(selectedFile[0].getName().lastIndexOf('.') + 1);
+					String uniqueName = name.replaceAll("\\s+", "_") + "_" + UUID.randomUUID() + "." + ext;
+					File imageDir = new File(contactPhotosURL);
+					if (!imageDir.exists()) imageDir.mkdirs();
+					File dest = new File(imageDir, uniqueName);
+					try {
+						Files.copy(selectedFile[0].toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+						photoFileName = uniqueName;
+					} catch (IOException ignored) {}
+				}
+
+				return new Contact(name, phone, email, photoFileName);
+			}
+			return null;
+		});
+		
+		dialog.showAndWait().ifPresent(updated -> {
+			manager.removeContact(selected.getName());	
+			manager.addContact(updated);					
+			showAllContacts();							
+		});	
 	}
 	
 	private void showSearchDialog() {
@@ -194,7 +351,7 @@ public class Main extends Application {
 	}
 	
 	private void showSortDialog() {
-		ChoiceDialog<String> dialog = new ChoiceDialog<>("name", "name", "phone", "email");
+		ChoiceDialog<String> dialog = new ChoiceDialog<>("name", "phone", "email");
 		dialog.setTitle("Sort Contacts");
 		dialog.setHeaderText("Sort by:");
 		dialog.showAndWait().ifPresent(criterion -> {
@@ -204,6 +361,7 @@ public class Main extends Application {
 	
 	private void showAllContacts() {
 		displayedContacts.setAll(manager.getAllContacts());
+		
 	}
 	
 	private void showAlert(String message) {

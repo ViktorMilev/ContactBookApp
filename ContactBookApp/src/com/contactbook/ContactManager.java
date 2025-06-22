@@ -3,7 +3,6 @@ package com.contactbook;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
-
 import java.util.Comparator;
 import java.util.stream.Collectors;
 
@@ -70,11 +69,12 @@ public class ContactManager {
 
 	private void saveContactsToFile() {
 		try (PrintWriter writer = new PrintWriter(new FileWriter(FILE_PATH))) {
-			writer.println("Name,Phone,Email");
+			writer.println("Name,Phone,Email,PhotoFileName");
 			for (Contact c : contacts) {
 				writer.println(escape(c.getName()) + "," +
 							   escape(c.getPhoneNumber()) + "," +
-							   escape(c.getEmail()));
+							   escape(c.getEmail()) + "," +
+							   escape(c.getPhotoFileName()));
 			}
 		} catch (IOException e) {
 	        System.err.println("Error saving contacts: " + e.getMessage());
@@ -82,6 +82,10 @@ public class ContactManager {
 	}
 	
 	private String escape(String value) {
+		if (value == null) {
+			return "";
+		}
+		
 		if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
 			value = value.replace("\"", "\"\"");
 			return "\"" + value + "\"";
@@ -99,8 +103,12 @@ public class ContactManager {
 			
 			while((line = reader.readLine()) != null) {
 				String[] parts = parseCSVLine(line);
-				if (parts.length == 3) {
-					contacts.add(new Contact(parts[0], parts[1], parts[2]));
+				if (parts.length >= 3) {
+					String name = parts[0];
+					String phone = parts[1];
+					String email = parts[2];
+					String photoFile = parts.length >= 4 ? parts[3] : null;	
+					contacts.add(new Contact(name, phone, email, photoFile));
 				}
 			}
 		} catch (IOException e) {
@@ -116,9 +124,9 @@ public class ContactManager {
 		for (int i = 0; i < line.length(); i++) {
 			char c = line.charAt(i);
 			
-			if (c == '\"') {
-				if (insideQuote && i + 1 < line.length() && line.charAt(i + 1) == '\"') {
-					sb.append('\"');
+			if (c == '"') {
+				if (insideQuote && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+					sb.append('"');
 					i++;			// skip escaped quote
 				} else {
 					insideQuote = !insideQuote;

@@ -4,11 +4,13 @@ public class Contact {
 	private String name;
 	private String phoneNumber;
 	private String email;
+	private String photoFileName;
 	
-	public Contact(String name, String phoneNumber, String email) {
+	public Contact(String name, String phoneNumber, String email, String photoFileName) {
 		this.name = name;
 		this.phoneNumber = phoneNumber;
 		this.email = email;
+		this.photoFileName = photoFileName;
 	}
 
 	// Getters
@@ -25,6 +27,10 @@ public class Contact {
 		return email;
 	}
 	
+	public String getPhotoFileName() {
+		return photoFileName;
+	}
+	
 	// Setters
 	public void setName(String name) {
 		this.name = name;
@@ -38,10 +44,15 @@ public class Contact {
 		this.email = email;
 	}
 	
+	public void setPhotoFileName(String photoFileName) {
+		this.photoFileName = photoFileName;
+	}
+	
 	@Override
 	public String toString() {
-		return "Name" + name +
-				"\nPhone:" + phoneNumber +
-				"\nEmail:" + email;
+		return "Name: " + name +
+				"\nPhone: " + phoneNumber +
+				"\nEmail: " + email +
+				"\nPhoto: " + photoFileName;
 	}
 }
